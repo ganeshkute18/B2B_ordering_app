@@ -1,6 +1,26 @@
 import { PrismaClient, Role, UnitType } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
+/**
+ * Development Seed File
+ * 
+ * ⚠️  IMPORTANT: This seed file includes SAMPLE CREDENTIALS
+ * 
+ * Use this for:
+ * ✅ Local development
+ * ✅ Testing features
+ * ✅ Internal QA
+ * 
+ * For Production:
+ * ❌ DO NOT use this seed file
+ * ✅ Use: seed-production.ts instead
+ * 
+ * Production users should be created via:
+ * - Client self-registration
+ * - npx ts-node prisma/create-real-user.ts
+ * - Direct database insert
+ */
+
 const prisma = new PrismaClient();
 
 async function main() {
