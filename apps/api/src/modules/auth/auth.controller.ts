@@ -2,7 +2,7 @@ import { Controller, Post, Body, Req, HttpCode, HttpStatus, UseGuards, Get, Quer
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { Request } from 'express';
 import { AuthService } from './auth.service';
-import { LoginDto, RefreshTokenDto, SignupCustomerDto, SignupStaffDto, GenerateInvitationDto } from './dto/auth.dto';
+import { LoginDto, RefreshTokenDto, SignupCustomerDto, SignupStaffDto, GenerateInvitationDto, VerifyEmailDto, ResendVerificationEmailDto } from './dto/auth.dto';
 import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -37,6 +37,20 @@ export class AuthController {
   @HttpCode(HttpStatus.CREATED)
   signupStaff(@Body() dto: SignupStaffDto) {
     return this.authService.signupStaff(dto);
+  }
+
+  @Public()
+  @Post('verify-email')
+  @HttpCode(HttpStatus.OK)
+  verifyEmail(@Body() dto: VerifyEmailDto) {
+    return this.authService.verifyEmail(dto.token);
+  }
+
+  @Public()
+  @Post('resend-verification-email')
+  @HttpCode(HttpStatus.OK)
+  resendVerificationEmail(@Body() dto: ResendVerificationEmailDto) {
+    return this.authService.resendVerificationEmail(dto.email);
   }
 
   @Roles(Role.OWNER)

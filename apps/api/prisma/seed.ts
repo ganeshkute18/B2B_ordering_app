@@ -1,34 +1,36 @@
-import { PrismaClient, Role, UnitType } from '@prisma/client';
+import { PrismaClient, Role, UnitType, ApprovalStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 /**
  * Development Seed File
  * 
- * ⚠️  IMPORTANT: This seed file includes SAMPLE CREDENTIALS
+ * ⚠️  IMPORTANT: This seed file includes SAMPLE CREDENTIALS FOR TESTING ONLY
  * 
  * Use this for:
  * ✅ Local development
  * ✅ Testing features
  * ✅ Internal QA
+ * ❌ NOT for production (remove all test accounts before going live)
  * 
  * For Production:
- * ❌ DO NOT use this seed file
- * ✅ Use: seed-production.ts instead
+ * ✅ Use setup-owner.ts to create the first real owner account
+ * ✅ Use self-registration (POST /auth/signup/customer)
+ * ✅ Use staff invitations (POST /auth/invitations/generate)
  * 
- * Production users should be created via:
- * - Client self-registration
- * - npx ts-node prisma/create-real-user.ts
- * - Direct database insert
+ * Test Accounts:
+ * - owner@distro.com (owner)
+ * - staff@distro.com (staff)
+ * - customer@distro.com (customer)
  */
 
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('🌱 Seeding database...');
+  console.log('🌱 Seeding database with test data...');
 
   const passwordHash = await bcrypt.hash('Password@123', 12);
 
-  // Create Owner
+  // Create Test Owner
   const owner = await prisma.user.upsert({
     where: { email: 'owner@distro.com' },
     update: {},
@@ -38,10 +40,13 @@ async function main() {
       passwordHash,
       role: Role.OWNER,
       phone: '+919999900000',
+      isActive: true,
+      emailVerified: true, // Test user, already verified
+      approvalStatus: 'APPROVED' as ApprovalStatus, // Auto-approved for testing
     },
   });
 
-  // Create Staff
+  // Create Test Staff
   const staff = await prisma.user.upsert({
     where: { email: 'staff@distro.com' },
     update: {},
@@ -51,10 +56,13 @@ async function main() {
       passwordHash,
       role: Role.STAFF,
       phone: '+919999900001',
+      isActive: true,
+      emailVerified: true, // Test user, already verified
+      approvalStatus: 'APPROVED' as ApprovalStatus, // Auto-approved for testing
     },
   });
 
-  // Create Customer
+  // Create Test Customer
   const customer = await prisma.user.upsert({
     where: { email: 'customer@distro.com' },
     update: {},
@@ -66,6 +74,9 @@ async function main() {
       phone: '+919999900002',
       businessName: 'Raj General Store',
       address: '12, Market Road, Pune 411001',
+      isActive: true,
+      emailVerified: true, // Test user, already verified
+      approvalStatus: 'APPROVED' as ApprovalStatus, // Customers auto-approve
     },
   });
 
@@ -151,37 +162,53 @@ async function main() {
       isUsed: false,
     },
   });
+      isUsed: false,
+    },
+  });
 
-  console.log('✅ Seed complete!');
-  console.log('\n📋 Login Credentials for Testing:');
-  console.log('\n  Owner Account:');
-  console.log('    📧 Email:    owner@distro.com');
-  console.log('    🔑 Password: Password@123');
-  console.log('    🎯 Access:   Full system, user management, invitations');
-  console.log('\n  Staff Account:');
-  console.log('    📧 Email:    staff@distro.com');
-  console.log('    🔑 Password: Password@123');
-  console.log('    🎯 Access:   Orders, inventory, reports');
-  console.log('\n  Customer Account:');
-  console.log('    📧 Email:    customer@distro.com');
-  console.log('    🔑 Password: Password@123');
-  console.log('    🎯 Access:   Catalog, orders, profile');
+  console.log('✅ Seed complete!\n');
+  console.log('🚨 WARNING: This is test data. Remove before production!');
+  
+  console.log('\n' + '='.repeat(60));
+  console.log('  TEST CREDENTIALS FOR LOCAL DEVELOPMENT');
+  console.log('='.repeat(60) + '\n');
+  
+  console.log('📧 OWNER Account:');
+  console.log('   Email:    owner@distro.com');
+  console.log('   Password: Password@123');
+  console.log('   Access:   Full system, user management, invitations\n');
+  
+  console.log('📧 STAFF Account:');
+  console.log('   Email:    staff@distro.com');
+  console.log('   Password: Password@123');
+  console.log('   Access:   Orders, inventory, reports\n');
+  
+  console.log('📧 CUSTOMER Account:');
+  console.log('   Email:    customer@distro.com');
+  console.log('   Password: Password@123');
+  console.log('   Access:   Catalog, orders, profile\n');
 
-  console.log('\n📨 Sample Invitation Codes (For Staff Signup):');
-  console.log(`    1️⃣  ${invitation1.code}`);
-  console.log(`        📧 Pre-assigned email: ${invitation1.email}`);
-  console.log(`        ⏰ Expires: ${invitation1.expiresAt.toDateString()}`);
-  console.log(`\n    2️⃣  ${invitation2.code}`);
-  console.log(`        📧 Any email can use this`);
-  console.log(`        ⏰ Expires: ${invitation2.expiresAt.toDateString()} (Tomorrow)`);
+  console.log('📨 Sample Invitation Codes (For Staff Signup):');
+  console.log(`   1️⃣  ${invitation1.code}`);
+  console.log(`       📧 Pre-assigned email: ${invitation1.email}`);
+  console.log(`       ⏰ Expires: ${invitation1.expiresAt.toDateString()}\n`);
+  console.log(`   2️⃣  ${invitation2.code}`);
+  console.log(`       📧 Any email can use this`);
+  console.log(`       ⏰ Expires: ${invitation2.expiresAt.toDateString()}\n`);
 
-  console.log('\n🌐 API Endpoints:');
-  console.log('   POST /api/v1/auth/login               - Login');
-  console.log('   POST /api/v1/auth/signup/customer     - Customer Signup (Public)');
-  console.log('   POST /api/v1/auth/signup/staff        - Staff Signup (Invitation Required)');
-  console.log('   POST /api/v1/auth/invitations/generate - Generate Invitation (Owner Only)');
-  console.log('   GET  /api/v1/auth/invitations         - List Invitations (Owner Only)');
-  console.log('\n🚀 Get Swagger Docs at: http://localhost:4000/api/docs');
+  console.log('🌐 API Endpoints:');
+  console.log('   POST /api/v1/auth/login                    - Login');
+  console.log('   POST /api/v1/auth/verify-email             - Verify email');
+  console.log('   POST /api/v1/auth/resend-verification-email - Resend verification');
+  console.log('   POST /api/v1/auth/signup/customer          - Customer Signup (Public)');
+  console.log('   POST /api/v1/auth/signup/staff             - Staff Signup (Invitation Required)');
+  console.log('   POST /api/v1/auth/invitations/generate     - Generate Invitation (Owner Only)');
+  console.log('   GET  /api/v1/auth/invitations              - List Invitations (Owner Only)');
+  console.log('   GET  /api/v1/users                         - List Users (Owner Only)');
+  console.log('   POST /api/v1/users/:userId/approve         - Approve User (Owner Only)');
+  console.log('   POST /api/v1/users/:userId/reject          - Reject User (Owner Only)\n');
+  
+  console.log('🚀 Get Swagger Docs at: http://localhost:4000/api/docs\n');
 }
 
 main()

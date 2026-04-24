@@ -9,6 +9,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { EmailService } from '../email/email.service';
 import { LoginDto, SignupCustomerDto, SignupStaffDto, GenerateInvitationDto } from './dto/auth.dto';
 import { AuditAction, Role } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
@@ -21,11 +22,26 @@ export class AuthService {
     private jwtService: JwtService,
     private configService: ConfigService,
     private auditService: AuditService,
+    private emailService: EmailService,
   ) {}
 
   async login(dto: LoginDto, ip?: string, userAgent?: string) {
     const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
     if (!user || !user.isActive) throw new UnauthorizedException('Invalid credentials');
+
+    // Check if email is verified
+    if (!user.emailVerified) {
+      throw new UnauthorizedException('Please verify your email before logging in');
+    }
+
+    // Check if user is approved (for staff members)
+    if (user.role === Role.STAFF && user.approvalStatus === 'PENDING') {
+      throw new UnauthorizedException('Your account is pending approval. Please wait for admin confirmation.');
+    }
+
+    if (user.role === Role.STAFF && user.approvalStatus === 'REJECTED') {
+      throw new UnauthorizedException('Your account has been rejected. Please contact support.');
+    }
 
     const valid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!valid) throw new UnauthorizedException('Invalid credentials');
@@ -94,6 +110,84 @@ export class AuthService {
   }
 
   // ============================================================================
+  // EMAIL VERIFICATION
+  // ============================================================================
+
+  async verifyEmail(token: string) {
+    // Find user with this verification token
+    const user = await this.prisma.user.findUnique({
+      where: { verificationToken: token },
+    });
+
+    if (!user) {
+      throw new BadRequestException('Invalid or expired verification token');
+    }
+
+    // Check token expiration
+    if (user.verificationTokenExpiresAt && new Date() > user.verificationTokenExpiresAt) {
+      throw new BadRequestException('Verification token has expired');
+    }
+
+    // Mark email as verified
+    const updatedUser = await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        emailVerified: true,
+        verificationToken: null,
+        verificationTokenExpiresAt: null,
+      },
+    });
+
+    return {
+      message: 'Email verified successfully',
+      email: updatedUser.email,
+    };
+  }
+
+  async resendVerificationEmail(email: string) {
+    // Find user by email
+    const user = await this.prisma.user.findUnique({ where: { email } });
+
+    if (!user) {
+      // Don't reveal if email exists (security best practice)
+      return {
+        message: 'If an account with this email exists, a verification link will be sent',
+      };
+    }
+
+    if (user.emailVerified) {
+      return {
+        message: 'This email is already verified',
+      };
+    }
+
+    // Generate new verification token
+    const token = this.generateVerificationToken();
+    const expiresAt = new Date();
+    expiresAt.setHours(expiresAt.getHours() + 24);
+
+    // Save token to database
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        verificationToken: token,
+        verificationTokenExpiresAt: expiresAt,
+      },
+    });
+
+    // Send verification email
+    try {
+      await this.emailService.sendVerificationEmail(user.email, token);
+    } catch (error) {
+      console.error('Failed to send verification email:', error);
+    }
+
+    return {
+      message: 'Verification email sent. Please check your inbox.',
+    };
+  }
+
+  // ============================================================================
   // SIGNUP ENDPOINTS - ROLE-BASED
   // ============================================================================
 
@@ -103,6 +197,11 @@ export class AuthService {
     if (existing) {
       throw new ConflictException('Email already registered');
     }
+
+    // Generate verification token
+    const verificationToken = this.generateVerificationToken();
+    const verificationTokenExpiresAt = new Date();
+    verificationTokenExpiresAt.setHours(verificationTokenExpiresAt.getHours() + 24);
 
     // Create customer user
     const passwordHash = await bcrypt.hash(dto.password, 10);
@@ -114,6 +213,10 @@ export class AuthService {
         role: Role.CUSTOMER,
         businessName: dto.businessName,
         isActive: true,
+        emailVerified: false,
+        verificationToken,
+        verificationTokenExpiresAt,
+        approvalStatus: 'APPROVED', // Customers auto-approved
       },
     });
 
@@ -125,20 +228,17 @@ export class AuthService {
       entityId: user.id,
     });
 
-    // Generate tokens and return
-    const tokens = await this.generateTokens(user.id, user.email, user.role);
-    await this.saveRefreshToken(user.id, tokens.refreshToken);
+    // Send verification email
+    try {
+      await this.emailService.sendVerificationEmail(user.email, verificationToken);
+    } catch (error) {
+      console.error('Failed to send verification email:', error);
+    }
 
     return {
-      accessToken: tokens.accessToken,
-      refreshToken: tokens.refreshToken,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        businessName: user.businessName,
-      },
+      message: 'Account created successfully. Please verify your email to login.',
+      email: user.email,
+      requiresEmailVerification: true,
     };
   }
 
@@ -170,7 +270,12 @@ export class AuthService {
       throw new ConflictException('Email already registered');
     }
 
-    // Create staff user
+    // Generate verification token
+    const verificationToken = this.generateVerificationToken();
+    const verificationTokenExpiresAt = new Date();
+    verificationTokenExpiresAt.setHours(verificationTokenExpiresAt.getHours() + 24);
+
+    // Create staff user with PENDING approval status
     const passwordHash = await bcrypt.hash(dto.password, 10);
     const user = await this.prisma.user.create({
       data: {
@@ -180,6 +285,10 @@ export class AuthService {
         role: Role.STAFF,
         businessName: dto.businessName,
         isActive: true,
+        emailVerified: false,
+        verificationToken,
+        verificationTokenExpiresAt,
+        approvalStatus: 'PENDING', // Staff requires approval
       },
     });
 
@@ -201,20 +310,18 @@ export class AuthService {
       entityId: user.id,
     });
 
-    // Generate tokens and return
-    const tokens = await this.generateTokens(user.id, user.email, user.role);
-    await this.saveRefreshToken(user.id, tokens.refreshToken);
+    // Send verification email
+    try {
+      await this.emailService.sendVerificationEmail(user.email, verificationToken);
+    } catch (error) {
+      console.error('Failed to send verification email:', error);
+    }
 
     return {
-      accessToken: tokens.accessToken,
-      refreshToken: tokens.refreshToken,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        businessName: user.businessName,
-      },
+      message: 'Account created successfully. Please verify your email to proceed.',
+      email: user.email,
+      requiresEmailVerification: true,
+      requiresApproval: true,
     };
   }
 
@@ -308,5 +415,9 @@ export class AuthService {
       where: { id: userId },
       data: { refreshToken: hashed },
     });
+  }
+
+  private generateVerificationToken(): string {
+    return crypto.randomBytes(32).toString('hex');
   }
 }

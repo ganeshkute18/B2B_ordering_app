@@ -51,19 +51,38 @@ enum AuditAction {
   LOGOUT
 }
 
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 model User {
-  id            String   @id @default(cuid())
-  email         String   @unique
-  phone         String?  @unique
-  name          String
-  passwordHash  String
-  role          Role     @default(CUSTOMER)
-  isActive      Boolean  @default(true)
-  businessName  String?
-  address       String?
-  refreshToken  String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id                           String   @id @default(cuid())
+  email                        String   @unique
+  phone                        String?  @unique
+  name                         String
+  passwordHash                 String
+  role                         Role     @default(CUSTOMER)
+  isActive                     Boolean  @default(true)
+  businessName                 String?
+  address                      String?
+  refreshToken                 String?
+  
+  // Email Verification
+  emailVerified                Boolean  @default(false)
+  verificationToken            String?  @unique
+  verificationTokenExpiresAt   DateTime?
+  
+  // User Approval Workflow
+  approvalStatus               ApprovalStatus @default(APPROVED)
+  approvalReason               String?
+  rejectionReason              String?
+  approvedBy                   String?
+  approvedAt                   DateTime?
+  
+  createdAt                    DateTime @default(now())
+  updatedAt                    DateTime @updatedAt
 
   orders         Order[]   @relation("CustomerOrders")
   approvedOrders Order[]   @relation("ApproverOrders")

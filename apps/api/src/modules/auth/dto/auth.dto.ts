@@ -20,6 +20,19 @@ export class RefreshTokenDto {
   refreshToken: string;
 }
 
+export class VerifyEmailDto {
+  @ApiProperty({ example: 'verification_token_here' })
+  @IsString()
+  @IsNotEmpty()
+  token: string;
+}
+
+export class ResendVerificationEmailDto {
+  @ApiProperty({ example: 'customer@example.com' })
+  @IsEmail()
+  email: string;
+}
+
 export class SignupCustomerDto {
   @ApiProperty({ example: 'customer@example.com' })
   @IsEmail()
